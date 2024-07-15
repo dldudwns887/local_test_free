@@ -30,6 +30,47 @@ def get_href_links(driver, wait, actions, num_items_to_fetch=100):
 
     return list(href_links)
 
+def extract_reviews(driver, wait):
+    reviews = []
+    for n in range(3, 10):
+        try:
+            weight_height_gender = wait.until(EC.presence_of_element_located((By.XPATH, f'//*[@id="style_estimate_list"]/div/div[{n}]/div[1]/div/div[1]/p[1]'))).text
+            print(f"weight_height_gender: {weight_height_gender}")
+            review_id = wait.until(EC.presence_of_element_located((By.XPATH, f'//*[@id="style_estimate_list"]/div/div[{n}]/div[1]/div/div[2]/p[1]'))).text
+            print(f"review_id: {review_id}")
+            top_size = wait.until(EC.presence_of_element_located((By.XPATH, f'//*[@id="style_estimate_list"]/div/div[{n}]/div[4]/div[1]/ul/li[1]/span'))).text
+            print(f"top_size: {top_size}")
+            brightness_comment = wait.until(EC.presence_of_element_located((By.XPATH, f'//*[@id="style_estimate_list"]/div/div[{n}]/div[4]/div[1]/ul/li[2]/span'))).text
+            print(f"brightness_comment: {brightness_comment}")
+            color_comment = wait.until(EC.presence_of_element_located((By.XPATH, f'//*[@id="style_estimate_list"]/div/div[{n}]/div[4]/div[1]/ul/li[3]/span'))).text
+            print(f"color_comment: {color_comment}")
+            thickness_comment = wait.until(EC.presence_of_element_located((By.XPATH, f'//*[@id="style_estimate_list"]/div/div[{n}]/div[4]/div[1]/ul/li[4]/span'))).text
+            print(f"thickness_comment: {thickness_comment}")
+            purchased_product_id = wait.until(EC.presence_of_element_located((By.XPATH, f'//*[@id="style_estimate_list"]/div/div[{n}]/div[2]/div[2]/a'))).get_attribute('href')
+            print(f"purchased_product_id: {purchased_product_id}")
+            purchased_size = wait.until(EC.presence_of_element_located((By.XPATH, f'//*[@id="style_estimate_list"]/div/div[{n}]/div[2]/div[2]/p/span'))).text
+            print(f"purchased_size: {purchased_size}")
+            comment = wait.until(EC.presence_of_element_located((By.XPATH, f'//*[@id="style_estimate_list"]/div/div[{n}]/div[4]/div[2]'))).text
+            print(f"comment: {comment}")
+
+            review = {
+                "weight_height_gender": weight_height_gender,
+                "review_id": review_id,
+                "top_size": top_size,
+                "brightness_comment": brightness_comment,
+                "color_comment": color_comment,
+                "thickness_comment": thickness_comment,
+                "purchased_product_id": purchased_product_id,
+                "purchased_size": purchased_size,
+                "comment": comment
+            }
+            reviews.append(review)
+        except (NoSuchElementException, TimeoutException):
+            print(f"Review information not found for element index: {n}")
+            continue
+    
+    return reviews
+
 def get_product_info(driver, wait, href_links):
     products = []
     for index, link in enumerate(href_links):
@@ -78,6 +119,9 @@ def get_product_info(driver, wait, href_links):
             except (NoSuchElementException, TimeoutException):
                 print(f"Size information not found for link: {link}")
 
+            # 리뷰 정보 가져오기
+            reviews = extract_reviews(driver, wait)
+
             product = {
                 "product_id": product_id,
                 "product_name": product_name,
@@ -85,7 +129,8 @@ def get_product_info(driver, wait, href_links):
                 "price": price,
                 "image_url": image_url,
                 "description": description,
-                "size": sizes
+                "size": sizes,
+                "reviews": reviews
             }
             products.append(product)
             
