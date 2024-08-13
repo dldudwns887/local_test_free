@@ -1,17 +1,3 @@
-# Thread count share update
-'''
-쓰레드 테스트 결과 90분에서 40분으로 단축
-이제 남은 것은 color 정보를 가져오기만 하면됨.
-
-color 정보는 고려해봐야할 듯 함.
-
-+
-
-csv파일 조회 결과 쓰레드 간 카운트를 공유하지 않는 문제 발생.
-이를 해결하기 위해 수정.
-
-
-'''
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
@@ -23,8 +9,8 @@ from selenium.webdriver.common.keys import Keys
 import time
 import pandas as pd
 import concurrent.futures
-from multiprocessing import Manager
-import color_size_crawling
+from multiprocessing import Value, Lock
+
 
 def get_href_links(driver, wait, actions, num_items_to_fetch=100):
     href_links = set()
@@ -61,35 +47,35 @@ def extract_reviews(driver, wait):
     for n in range(3, 10):
         try:
             review_id = wait.until(EC.presence_of_element_located((By.XPATH, f'//*[@id="style_estimate_list"]/div/div[{n}]/div[1]/div/div[1]/p[1]'))).text
-            print(f"review_id: {review_id}")
+            #print(f"review_id: {review_id}")
             
             try:
                 weight_height_gender = wait.until(EC.presence_of_element_located((By.XPATH, f'//*[@id="style_estimate_list"]/div/div[{n}]/div[1]/div/div[2]/p[1]'))).text
-                print(f"weight_height_gender: {weight_height_gender}")
+                #print(f"weight_height_gender: {weight_height_gender}")
             except:
                 weight_height_gender = wait.until(EC.presence_of_element_located((By.XPATH, f'//*[@id="style_estimate_list"]/div/div[{n}]/div[1]/div/div[2]/p'))).text
-                print(f"weight_height_gender (alternative): {weight_height_gender}")
+                #print(f"weight_height_gender (alternative): {weight_height_gender}")
             
             top_size = wait.until(EC.presence_of_element_located((By.XPATH, f'//*[@id="style_estimate_list"]/div/div[{n}]/div[4]/div[1]/ul/li[1]/span'))).text
-            print(f"top_size: {top_size}")
+            #print(f"top_size: {top_size}")
             
             brightness_comment = wait.until(EC.presence_of_element_located((By.XPATH, f'//*[@id="style_estimate_list"]/div/div[{n}]/div[4]/div[1]/ul/li[2]/span'))).text
-            print(f"brightness_comment: {brightness_comment}")
+            #print(f"brightness_comment: {brightness_comment}")
             
             color_comment = wait.until(EC.presence_of_element_located((By.XPATH, f'//*[@id="style_estimate_list"]/div/div[{n}]/div[4]/div[1]/ul/li[3]/span'))).text
-            print(f"color_comment: {color_comment}")
+            #print(f"color_comment: {color_comment}")
             
             thickness_comment = wait.until(EC.presence_of_element_located((By.XPATH, f'//*[@id="style_estimate_list"]/div/div[{n}]/div[4]/div[1]/ul/li[4]/span'))).text
-            print(f"thickness_comment: {thickness_comment}")
+            #print(f"thickness_comment: {thickness_comment}")
             
             purchased_product_id = wait.until(EC.presence_of_element_located((By.XPATH, f'//*[@id="style_estimate_list"]/div/div[{n}]/div[2]/div[2]/a'))).get_attribute('href')
-            print(f"purchased_product_id: {purchased_product_id}")
+            #print(f"purchased_product_id: {purchased_product_id}")
             
             purchased_size = wait.until(EC.presence_of_element_located((By.XPATH, f'//*[@id="style_estimate_list"]/div/div[{n}]/div[2]/div[2]/p/span'))).text
-            print(f"purchased_size: {purchased_size}")
+            #print(f"purchased_size: {purchased_size}")
             
             comment = wait.until(EC.presence_of_element_located((By.XPATH, f'//*[@id="style_estimate_list"]/div/div[{n}]/div[4]/div[2]'))).text
-            print(f"comment: {comment}")
+            #print(f"comment: {comment}")
 
             review = {
                 "weight_height_gender": weight_height_gender,
@@ -109,7 +95,7 @@ def extract_reviews(driver, wait):
     
     return reviews
 
-def get_product_info(driver, wait, href_links, count):
+def get_product_info(driver, wait, href_links, count, lock):
     products = []
     for index, link in enumerate(href_links):
         driver.get(link)
@@ -176,13 +162,13 @@ def get_product_info(driver, wait, href_links, count):
             print(f"Failed to extract data for link: {link} due to {e}")
             continue
 
-        with count.get_lock():
+        with lock:
             count.value += 1
             print(f"Processed {count.value} products")
 
     return products
 
-def save_to_csv(products, filename="products.csv"):
+def save_to_csv(products, filename="products_3.csv"):
     df = pd.DataFrame(products)
     df.to_csv(filename, index=False, encoding='utf-8-sig')
     print(f"Data saved to {filename}")
@@ -191,13 +177,13 @@ def split_list(lst, n):
     k, m = divmod(len(lst), n)
     return [lst[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n)]
 
-def process_links(links, count):
+def process_links(links, count, lock):
     option = webdriver.ChromeOptions()
     option.add_experimental_option("excludeSwitches", ["enable-logging"])
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=option)
     wait = WebDriverWait(driver, 10)
 
-    products = get_product_info(driver, wait, links, count)
+    products = get_product_info(driver, wait, links, count, lock)
     driver.quit()
     return products
 
@@ -220,18 +206,18 @@ def main():
 
     sub_lists = split_list(href_links, 4)
 
-    manager = Manager()
-    count = manager.Value('i', 0)
+    count = Value('i', 0)
+    lock = Lock()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        futures = [executor.submit(process_links, sub_list, count) for sub_list in sub_lists]
+        futures = [executor.submit(process_links, sub_list, count, lock) for sub_list in sub_lists]
         all_products = []
         for future in concurrent.futures.as_completed(futures):
             products = future.result()
             all_products.extend(products)
 
     save_to_csv(all_products)
-    color_size_crawling.main()
+    #color_size_crawling.main()
+
 if __name__ == '__main__':
     main()
-    
